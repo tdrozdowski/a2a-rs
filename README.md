@@ -10,7 +10,7 @@ a2a-rs is a comprehensive Rust implementation of the A2A (Agent-to-Agent) protoc
 
 This library provides:
 - Complete type definitions for all A2A protocol components
-- Helper functions for creating and working with A2A messages
+- Struct methods for creating and working with A2A messages
 - Serialization/deserialization support via serde
 - Comprehensive error handling
 
@@ -25,16 +25,16 @@ a2a-rs = "0.1.0"
 
 ## Usage
 
-The library provides helper functions for common operations:
+The library provides struct methods for common operations:
 
-- `create_agent_card()` - Create an agent card with capabilities and skills
-- `create_send_message_request()` - Create a request to send a message to an agent
-- `create_get_task_request()` - Create a request to get the status of a task
-- `create_cancel_task_request()` - Create a request to cancel a task
+- `AgentCard::new()` - Create an agent card with capabilities and skills
+- `SendMessageRequest::new()` - Create a request to send a message to an agent
+- `GetTaskRequest::new()` - Create a request to get the status of a task
+- `CancelTaskRequest::new()` - Create a request to cancel a task
 
 For example, to send a message to an agent, you would:
 1. Import the necessary types from a2a-rs
-2. Use the create_send_message_request helper function with appropriate parameters
+2. Use the `SendMessageRequest::new()` method with appropriate parameters
 3. Serialize the request to JSON
 4. Send the JSON to the agent
 
@@ -43,7 +43,7 @@ For example, to send a message to an agent, you would:
 - **Complete Protocol Implementation**: Implements all aspects of the A2A protocol version 0.2.5
 - **Type Safety**: Uses Rust's strong type system to ensure protocol correctness
 - **Serialization/Deserialization**: Full support for JSON serialization and deserialization
-- **Helper Functions**: Convenient functions for creating common A2A messages
+- **Struct Methods**: Convenient methods on structs for creating common A2A messages
 - **Error Handling**: Comprehensive error types for all protocol-related errors
 - **Backward Compatibility**: Supports both new method names (e.g., "message/send") and old method names (e.g., "sendMessage")
 

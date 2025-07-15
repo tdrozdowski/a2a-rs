@@ -418,6 +418,55 @@ pub struct AgentCard {
     pub security_schemes: Option<std::collections::HashMap<String, SecurityScheme>>,
 }
 
+impl AgentCard {
+    /// Create a new agent card with the specified parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the agent.
+    /// * `description` - A description of the agent.
+    /// * `version` - The version of the agent.
+    /// * `url` - The URL where the agent is hosted.
+    /// * `capabilities` - The capabilities of the agent.
+    /// * `default_input_modes` - The default input modes supported by the agent.
+    /// * `default_output_modes` - The default output modes supported by the agent.
+    /// * `skills` - The skills provided by the agent.
+    ///
+    /// # Returns
+    ///
+    /// A new `AgentCard` with the specified parameters.
+    pub fn new(
+        name: String,
+        description: String,
+        version: String,
+        url: String,
+        capabilities: AgentCapabilities,
+        default_input_modes: Vec<String>,
+        default_output_modes: Vec<String>,
+        skills: Vec<AgentSkill>,
+    ) -> Self {
+        Self {
+            name,
+            description,
+            version,
+            protocol_version: PROTOCOL_VERSION.to_string(),
+            url,
+            preferred_transport: None,
+            capabilities,
+            default_input_modes,
+            default_output_modes,
+            skills,
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            supports_authenticated_extended_card: None,
+            additional_interfaces: None,
+            security: None,
+            security_schemes: None,
+        }
+    }
+}
+
 /// Task status.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -508,6 +557,49 @@ pub struct SendMessageRequest {
     pub jsonrpc: String,
 }
 
+impl SendMessageRequest {
+    /// Create a new send message request.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The JSON-RPC ID.
+    /// * `content_type` - The content type of the message.
+    /// * `content` - The content of the message.
+    /// * `skill` - The skill to use (optional).
+    /// * `conversation_id` - The conversation ID (optional).
+    /// * `parent_message_id` - The parent message ID (optional).
+    /// * `metadata` - Additional metadata (optional).
+    ///
+    /// # Returns
+    ///
+    /// A new `SendMessageRequest` with the specified parameters.
+    pub fn new(
+        id: String,
+        content_type: String,
+        content: String,
+        skill: Option<String>,
+        conversation_id: Option<String>,
+        parent_message_id: Option<String>,
+        metadata: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            method: RequestMethod::MessageSend,
+            params: SendMessageParams {
+                message: MessageContent {
+                    content_type,
+                    content,
+                },
+                skill,
+                conversation_id,
+                parent_message_id,
+                metadata,
+            },
+            id,
+            jsonrpc: "2.0".to_string(),
+        }
+    }
+}
+
 /// Send message parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -582,6 +674,27 @@ pub struct GetTaskRequest {
     pub jsonrpc: String,
 }
 
+impl GetTaskRequest {
+    /// Create a new get task request.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The JSON-RPC ID.
+    /// * `task_id` - The ID of the task to get.
+    ///
+    /// # Returns
+    ///
+    /// A new `GetTaskRequest` with the specified parameters.
+    pub fn new(id: String, task_id: String) -> Self {
+        Self {
+            method: RequestMethod::TasksGet,
+            params: GetTaskParams { task_id },
+            id,
+            jsonrpc: "2.0".to_string(),
+        }
+    }
+}
+
 /// Get task parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -614,6 +727,27 @@ pub struct CancelTaskRequest {
     pub id: String,
     /// The JSON-RPC version.
     pub jsonrpc: String,
+}
+
+impl CancelTaskRequest {
+    /// Create a new cancel task request.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The JSON-RPC ID.
+    /// * `task_id` - The ID of the task to cancel.
+    ///
+    /// # Returns
+    ///
+    /// A new `CancelTaskRequest` with the specified parameters.
+    pub fn new(id: String, task_id: String) -> Self {
+        Self {
+            method: RequestMethod::TasksCancel,
+            params: CancelTaskParams { task_id },
+            id,
+            jsonrpc: "2.0".to_string(),
+        }
+    }
 }
 
 /// Cancel task parameters.
@@ -847,132 +981,6 @@ pub struct DeleteTaskPushNotificationConfigResponse {
 pub mod helpers {
     use super::*;
 
-    /// Create a new agent card with the specified parameters.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the agent.
-    /// * `description` - A description of the agent.
-    /// * `version` - The version of the agent.
-    /// * `url` - The URL where the agent is hosted.
-    /// * `capabilities` - The capabilities of the agent.
-    /// * `default_input_modes` - The default input modes supported by the agent.
-    /// * `default_output_modes` - The default output modes supported by the agent.
-    /// * `skills` - The skills provided by the agent.
-    ///
-    /// # Returns
-    ///
-    /// A new `AgentCard` with the specified parameters.
-    pub fn create_agent_card(
-        name: String,
-        description: String,
-        version: String,
-        url: String,
-        capabilities: AgentCapabilities,
-        default_input_modes: Vec<String>,
-        default_output_modes: Vec<String>,
-        skills: Vec<AgentSkill>,
-    ) -> AgentCard {
-        AgentCard {
-            name,
-            description,
-            version,
-            protocol_version: PROTOCOL_VERSION.to_string(),
-            url,
-            preferred_transport: None,
-            capabilities,
-            default_input_modes,
-            default_output_modes,
-            skills,
-            provider: None,
-            documentation_url: None,
-            icon_url: None,
-            supports_authenticated_extended_card: None,
-            additional_interfaces: None,
-            security: None,
-            security_schemes: None,
-        }
-    }
-
-    /// Create a new send message request.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The JSON-RPC ID.
-    /// * `content_type` - The content type of the message.
-    /// * `content` - The content of the message.
-    /// * `skill` - The skill to use (optional).
-    /// * `conversation_id` - The conversation ID (optional).
-    /// * `parent_message_id` - The parent message ID (optional).
-    /// * `metadata` - Additional metadata (optional).
-    ///
-    /// # Returns
-    ///
-    /// A new `SendMessageRequest` with the specified parameters.
-    pub fn create_send_message_request(
-        id: String,
-        content_type: String,
-        content: String,
-        skill: Option<String>,
-        conversation_id: Option<String>,
-        parent_message_id: Option<String>,
-        metadata: Option<serde_json::Value>,
-    ) -> SendMessageRequest {
-        SendMessageRequest {
-            method: RequestMethod::MessageSend,
-            params: SendMessageParams {
-                message: MessageContent {
-                    content_type,
-                    content,
-                },
-                skill,
-                conversation_id,
-                parent_message_id,
-                metadata,
-            },
-            id,
-            jsonrpc: "2.0".to_string(),
-        }
-    }
-
-    /// Create a new get task request.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The JSON-RPC ID.
-    /// * `task_id` - The ID of the task to get.
-    ///
-    /// # Returns
-    ///
-    /// A new `GetTaskRequest` with the specified parameters.
-    pub fn create_get_task_request(id: String, task_id: String) -> GetTaskRequest {
-        GetTaskRequest {
-            method: RequestMethod::TasksGet,
-            params: GetTaskParams { task_id },
-            id,
-            jsonrpc: "2.0".to_string(),
-        }
-    }
-
-    /// Create a new cancel task request.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The JSON-RPC ID.
-    /// * `task_id` - The ID of the task to cancel.
-    ///
-    /// # Returns
-    ///
-    /// A new `CancelTaskRequest` with the specified parameters.
-    pub fn create_cancel_task_request(id: String, task_id: String) -> CancelTaskRequest {
-        CancelTaskRequest {
-            method: RequestMethod::TasksCancel,
-            params: CancelTaskParams { task_id },
-            id,
-            jsonrpc: "2.0".to_string(),
-        }
-    }
-
     /// Parse a JSON string into an A2A request.
     ///
     /// # Arguments
@@ -1006,7 +1014,7 @@ mod tests {
 
     #[test]
     fn test_create_agent_card() {
-        let card = helpers::create_agent_card(
+        let card = AgentCard::new(
             "Test Agent".to_string(),
             "A test agent".to_string(),
             "1.0.0".to_string(),
@@ -1046,7 +1054,7 @@ mod tests {
 
     #[test]
     fn test_create_send_message_request() {
-        let request = helpers::create_send_message_request(
+        let request = SendMessageRequest::new(
             "1".to_string(),
             "text/plain".to_string(),
             "Hello, world!".to_string(),
@@ -1069,7 +1077,7 @@ mod tests {
 
     #[test]
     fn test_create_get_task_request() {
-        let request = helpers::create_get_task_request("1".to_string(), "task1".to_string());
+        let request = GetTaskRequest::new("1".to_string(), "task1".to_string());
 
         assert_eq!(request.method, RequestMethod::TasksGet);
         assert_eq!(request.id, "1");
@@ -1079,7 +1087,7 @@ mod tests {
 
     #[test]
     fn test_create_cancel_task_request() {
-        let request = helpers::create_cancel_task_request("1".to_string(), "task1".to_string());
+        let request = CancelTaskRequest::new("1".to_string(), "task1".to_string());
 
         assert_eq!(request.method, RequestMethod::TasksCancel);
         assert_eq!(request.id, "1");
