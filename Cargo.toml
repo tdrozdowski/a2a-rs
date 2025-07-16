@@ -1,6 +1,6 @@
 [package]
 name = "a2a-rs"
-version = "0.2.5-1"
+version = "0.2.6"
 edition = "2024"
 description = "Rust implementation of the A2A (Agent-to-Agent) protocol"
 license = "MIT"
