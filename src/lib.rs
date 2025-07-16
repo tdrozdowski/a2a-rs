@@ -133,7 +133,7 @@ pub struct FileWithUri {
 // ============================================================================
 
 /// Represents the possible states of a Task.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskState {
     Submitted,
@@ -533,6 +533,73 @@ pub struct ApiKeySecurityScheme {
     pub description: Option<String>,
 }
 
+impl ApiKeySecurityScheme {
+    /// Create a new API Key security scheme.
+    ///
+    /// # Arguments
+    ///
+    /// * `in_` - The location of the API key.
+    /// * `name` - The name of the parameter.
+    ///
+    /// # Returns
+    ///
+    /// A new `ApiKeySecurityScheme`.
+    pub fn new(in_: ApiKeyLocation, name: String) -> Self {
+        Self {
+            type_: "apiKey".to_string(),
+            in_,
+            name,
+            description: None,
+        }
+    }
+
+    /// Validate the API Key security scheme.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.type_ != "apiKey" {
+            return Err("API Key security scheme type must be 'apiKey'".to_string());
+        }
+
+        if self.name.is_empty() {
+            return Err("API Key parameter name cannot be empty".to_string());
+        }
+
+        // Validate parameter name based on location
+        match self.in_ {
+            ApiKeyLocation::Header => {
+                if self.name.contains(' ') {
+                    return Err("Header names cannot contain spaces".to_string());
+                }
+                if self.name.to_lowercase() == "authorization" {
+                    return Err("Use HTTP security scheme for Authorization header".to_string());
+                }
+            }
+            ApiKeyLocation::Query => {
+                if self.name.contains(' ') || self.name.contains('&') || self.name.contains('=') {
+                    return Err("Query parameter names cannot contain spaces, &, or =".to_string());
+                }
+            }
+            ApiKeyLocation::Cookie => {
+                if self.name.contains(' ') || self.name.contains(';') || self.name.contains('=') {
+                    return Err("Cookie names cannot contain spaces, ;, or =".to_string());
+                }
+            }
+        }
+
+        // Validate description length if present
+        if let Some(desc) = &self.description {
+            if desc.len() > 500 {
+                return Err("Security scheme description is too long (max 500 characters)".to_string());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// HTTP security scheme.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -550,6 +617,86 @@ pub struct HttpSecurityScheme {
     pub description: Option<String>,
 }
 
+impl HttpSecurityScheme {
+    /// Create a new HTTP security scheme.
+    ///
+    /// # Arguments
+    ///
+    /// * `scheme` - The HTTP Authorization scheme name.
+    ///
+    /// # Returns
+    ///
+    /// A new `HttpSecurityScheme`.
+    pub fn new(scheme: String) -> Self {
+        Self {
+            type_: "http".to_string(),
+            scheme,
+            bearer_format: None,
+            description: None,
+        }
+    }
+
+    /// Create a new Bearer HTTP security scheme.
+    ///
+    /// # Arguments
+    ///
+    /// * `bearer_format` - Optional bearer token format hint.
+    ///
+    /// # Returns
+    ///
+    /// A new `HttpSecurityScheme` configured for Bearer tokens.
+    pub fn bearer(bearer_format: Option<String>) -> Self {
+        Self {
+            type_: "http".to_string(),
+            scheme: "bearer".to_string(),
+            bearer_format,
+            description: None,
+        }
+    }
+
+    /// Validate the HTTP security scheme.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.type_ != "http" {
+            return Err("HTTP security scheme type must be 'http'".to_string());
+        }
+
+        if self.scheme.is_empty() {
+            return Err("HTTP scheme name cannot be empty".to_string());
+        }
+
+        // Validate common HTTP authentication schemes
+        let valid_schemes = ["basic", "bearer", "digest", "negotiate", "ntlm"];
+        let scheme_lower = self.scheme.to_lowercase();
+
+        if !valid_schemes.contains(&scheme_lower.as_str()) && !scheme_lower.starts_with("x-") {
+            return Err(format!("Unknown HTTP authentication scheme: {}", self.scheme));
+        }
+
+        // Validate bearer format if present
+        if let Some(ref format) = self.bearer_format {
+            if self.scheme.to_lowercase() != "bearer" {
+                return Err("Bearer format can only be specified for bearer scheme".to_string());
+            }
+            if format.is_empty() {
+                return Err("Bearer format cannot be empty if specified".to_string());
+            }
+        }
+
+        // Validate description length if present
+        if let Some(desc) = &self.description {
+            if desc.len() > 500 {
+                return Err("Security scheme description is too long (max 500 characters)".to_string());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// OAuth2 security scheme.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -562,6 +709,88 @@ pub struct OAuth2SecurityScheme {
     /// Description of this security scheme.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+impl OAuth2SecurityScheme {
+    /// Create a new OAuth2 security scheme.
+    ///
+    /// # Arguments
+    ///
+    /// * `flows` - The OAuth2 flows configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new `OAuth2SecurityScheme`.
+    pub fn new(flows: OAuth2Flows) -> Self {
+        Self {
+            type_: "oauth2".to_string(),
+            flows,
+            description: None,
+        }
+    }
+
+    /// Validate the OAuth2 security scheme.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.type_ != "oauth2" {
+            return Err("OAuth2 security scheme type must be 'oauth2'".to_string());
+        }
+
+        // Validate that at least one flow is defined
+        if self.flows.implicit.is_none() 
+            && self.flows.password.is_none() 
+            && self.flows.client_credentials.is_none() 
+            && self.flows.authorization_code.is_none() {
+            return Err("OAuth2 security scheme must define at least one flow".to_string());
+        }
+
+        // Validate each defined flow
+        if let Some(ref flow) = self.flows.implicit {
+            flow.validate().map_err(|e| format!("Invalid implicit flow: {}", e))?;
+        }
+
+        if let Some(ref flow) = self.flows.password {
+            flow.validate().map_err(|e| format!("Invalid password flow: {}", e))?;
+        }
+
+        if let Some(ref flow) = self.flows.client_credentials {
+            flow.validate().map_err(|e| format!("Invalid client credentials flow: {}", e))?;
+        }
+
+        if let Some(ref flow) = self.flows.authorization_code {
+            flow.validate().map_err(|e| format!("Invalid authorization code flow: {}", e))?;
+        }
+
+        // Validate description length if present
+        if let Some(desc) = &self.description {
+            if desc.len() > 500 {
+                return Err("Security scheme description is too long (max 500 characters)".to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if the OAuth2 scheme supports client-only flows.
+    ///
+    /// # Returns
+    ///
+    /// `true` if client-only flows are supported.
+    pub fn supports_client_only_flows(&self) -> bool {
+        self.flows.client_credentials.is_some()
+    }
+
+    /// Check if the OAuth2 scheme requires user interaction.
+    ///
+    /// # Returns
+    ///
+    /// `true` if user interaction is required.
+    pub fn requires_user_interaction(&self) -> bool {
+        self.flows.implicit.is_some() || self.flows.authorization_code.is_some()
+    }
 }
 
 /// OAuth2 flows.
@@ -597,6 +826,69 @@ pub struct AuthorizationCodeOAuthFlow {
     pub scopes: std::collections::HashMap<String, String>,
 }
 
+impl AuthorizationCodeOAuthFlow {
+    /// Create a new Authorization Code OAuth flow.
+    ///
+    /// # Arguments
+    ///
+    /// * `authorization_url` - The authorization URL.
+    /// * `token_url` - The token URL.
+    /// * `scopes` - The available scopes.
+    ///
+    /// # Returns
+    ///
+    /// A new `AuthorizationCodeOAuthFlow`.
+    pub fn new(
+        authorization_url: String,
+        token_url: String,
+        scopes: std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            authorization_url,
+            token_url,
+            refresh_url: None,
+            scopes,
+        }
+    }
+
+    /// Validate the OAuth flow configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::validation::validate_url(&self.authorization_url)
+            .map_err(|e| format!("Invalid authorization URL: {}", e))?;
+
+        crate::validation::validate_url(&self.token_url)
+            .map_err(|e| format!("Invalid token URL: {}", e))?;
+
+        if let Some(ref refresh_url) = self.refresh_url {
+            crate::validation::validate_url(refresh_url)
+                .map_err(|e| format!("Invalid refresh URL: {}", e))?;
+        }
+
+        if self.scopes.is_empty() {
+            return Err("OAuth2 flow must define at least one scope".to_string());
+        }
+
+        // Validate scope names and descriptions
+        for (scope_name, scope_desc) in &self.scopes {
+            if scope_name.is_empty() {
+                return Err("OAuth2 scope name cannot be empty".to_string());
+            }
+            if scope_desc.is_empty() {
+                return Err("OAuth2 scope description cannot be empty".to_string());
+            }
+            if scope_name.contains(' ') {
+                return Err("OAuth2 scope names cannot contain spaces".to_string());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Client Credentials OAuth flow.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -608,6 +900,63 @@ pub struct ClientCredentialsOAuthFlow {
     pub refresh_url: Option<String>,
     /// The available scopes for the OAuth2 security scheme.
     pub scopes: std::collections::HashMap<String, String>,
+}
+
+impl ClientCredentialsOAuthFlow {
+    /// Create a new Client Credentials OAuth flow.
+    ///
+    /// # Arguments
+    ///
+    /// * `token_url` - The token URL.
+    /// * `scopes` - The available scopes.
+    ///
+    /// # Returns
+    ///
+    /// A new `ClientCredentialsOAuthFlow`.
+    pub fn new(
+        token_url: String,
+        scopes: std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            token_url,
+            refresh_url: None,
+            scopes,
+        }
+    }
+
+    /// Validate the OAuth flow configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::validation::validate_url(&self.token_url)
+            .map_err(|e| format!("Invalid token URL: {}", e))?;
+
+        if let Some(ref refresh_url) = self.refresh_url {
+            crate::validation::validate_url(refresh_url)
+                .map_err(|e| format!("Invalid refresh URL: {}", e))?;
+        }
+
+        if self.scopes.is_empty() {
+            return Err("OAuth2 flow must define at least one scope".to_string());
+        }
+
+        // Validate scope names and descriptions
+        for (scope_name, scope_desc) in &self.scopes {
+            if scope_name.is_empty() {
+                return Err("OAuth2 scope name cannot be empty".to_string());
+            }
+            if scope_desc.is_empty() {
+                return Err("OAuth2 scope description cannot be empty".to_string());
+            }
+            if scope_name.contains(' ') {
+                return Err("OAuth2 scope names cannot contain spaces".to_string());
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Implicit OAuth flow.
@@ -623,6 +972,63 @@ pub struct ImplicitOAuthFlow {
     pub scopes: std::collections::HashMap<String, String>,
 }
 
+impl ImplicitOAuthFlow {
+    /// Create a new Implicit OAuth flow.
+    ///
+    /// # Arguments
+    ///
+    /// * `authorization_url` - The authorization URL.
+    /// * `scopes` - The available scopes.
+    ///
+    /// # Returns
+    ///
+    /// A new `ImplicitOAuthFlow`.
+    pub fn new(
+        authorization_url: String,
+        scopes: std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            authorization_url,
+            refresh_url: None,
+            scopes,
+        }
+    }
+
+    /// Validate the OAuth flow configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::validation::validate_url(&self.authorization_url)
+            .map_err(|e| format!("Invalid authorization URL: {}", e))?;
+
+        if let Some(ref refresh_url) = self.refresh_url {
+            crate::validation::validate_url(refresh_url)
+                .map_err(|e| format!("Invalid refresh URL: {}", e))?;
+        }
+
+        if self.scopes.is_empty() {
+            return Err("OAuth2 flow must define at least one scope".to_string());
+        }
+
+        // Validate scope names and descriptions
+        for (scope_name, scope_desc) in &self.scopes {
+            if scope_name.is_empty() {
+                return Err("OAuth2 scope name cannot be empty".to_string());
+            }
+            if scope_desc.is_empty() {
+                return Err("OAuth2 scope description cannot be empty".to_string());
+            }
+            if scope_name.contains(' ') {
+                return Err("OAuth2 scope names cannot contain spaces".to_string());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Password OAuth flow.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -634,6 +1040,63 @@ pub struct PasswordOAuthFlow {
     pub refresh_url: Option<String>,
     /// The available scopes for the OAuth2 security scheme.
     pub scopes: std::collections::HashMap<String, String>,
+}
+
+impl PasswordOAuthFlow {
+    /// Create a new Password OAuth flow.
+    ///
+    /// # Arguments
+    ///
+    /// * `token_url` - The token URL.
+    /// * `scopes` - The available scopes.
+    ///
+    /// # Returns
+    ///
+    /// A new `PasswordOAuthFlow`.
+    pub fn new(
+        token_url: String,
+        scopes: std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            token_url,
+            refresh_url: None,
+            scopes,
+        }
+    }
+
+    /// Validate the OAuth flow configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::validation::validate_url(&self.token_url)
+            .map_err(|e| format!("Invalid token URL: {}", e))?;
+
+        if let Some(ref refresh_url) = self.refresh_url {
+            crate::validation::validate_url(refresh_url)
+                .map_err(|e| format!("Invalid refresh URL: {}", e))?;
+        }
+
+        if self.scopes.is_empty() {
+            return Err("OAuth2 flow must define at least one scope".to_string());
+        }
+
+        // Validate scope names and descriptions
+        for (scope_name, scope_desc) in &self.scopes {
+            if scope_name.is_empty() {
+                return Err("OAuth2 scope name cannot be empty".to_string());
+            }
+            if scope_desc.is_empty() {
+                return Err("OAuth2 scope description cannot be empty".to_string());
+            }
+            if scope_name.contains(' ') {
+                return Err("OAuth2 scope names cannot contain spaces".to_string());
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// OpenID Connect security scheme.
@@ -650,6 +1113,73 @@ pub struct OpenIdConnectSecurityScheme {
     pub description: Option<String>,
 }
 
+impl OpenIdConnectSecurityScheme {
+    /// Create a new OpenID Connect security scheme.
+    ///
+    /// # Arguments
+    ///
+    /// * `open_id_connect_url` - The OpenID Connect discovery URL.
+    ///
+    /// # Returns
+    ///
+    /// A new `OpenIdConnectSecurityScheme`.
+    pub fn new(open_id_connect_url: String) -> Self {
+        Self {
+            type_: "openIdConnect".to_string(),
+            open_id_connect_url,
+            description: None,
+        }
+    }
+
+    /// Validate the OpenID Connect security scheme.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.type_ != "openIdConnect" {
+            return Err("OpenID Connect security scheme type must be 'openIdConnect'".to_string());
+        }
+
+        // Validate the OpenID Connect URL
+        crate::validation::validate_url(&self.open_id_connect_url)
+            .map_err(|e| format!("Invalid OpenID Connect URL: {}", e))?;
+
+        // Validate that it's HTTPS (required for OpenID Connect)
+        if !self.open_id_connect_url.starts_with("https://") {
+            return Err("OpenID Connect URL must use HTTPS".to_string());
+        }
+
+        // Validate common OpenID Connect discovery endpoint patterns
+        if !self.open_id_connect_url.contains("/.well-known/openid_configuration") 
+            && !self.open_id_connect_url.contains("/.well-known/openid-configuration") {
+            return Err("OpenID Connect URL should point to a well-known configuration endpoint".to_string());
+        }
+
+        // Validate description length if present
+        if let Some(desc) = &self.description {
+            if desc.len() > 500 {
+                return Err("Security scheme description is too long (max 500 characters)".to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get the base URL for the OpenID Connect provider.
+    ///
+    /// # Returns
+    ///
+    /// The base URL of the OpenID Connect provider.
+    pub fn get_provider_base_url(&self) -> String {
+        if let Some(pos) = self.open_id_connect_url.find("/.well-known/") {
+            self.open_id_connect_url[..pos].to_string()
+        } else {
+            self.open_id_connect_url.clone()
+        }
+    }
+}
+
 /// Security scheme.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -662,6 +1192,53 @@ pub enum SecurityScheme {
     OAuth2(OAuth2SecurityScheme),
     /// OpenID Connect security scheme.
     OpenIdConnect(OpenIdConnectSecurityScheme),
+}
+
+impl SecurityScheme {
+    /// Validate the security scheme configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            SecurityScheme::ApiKey(scheme) => scheme.validate(),
+            SecurityScheme::Http(scheme) => scheme.validate(),
+            SecurityScheme::OAuth2(scheme) => scheme.validate(),
+            SecurityScheme::OpenIdConnect(scheme) => scheme.validate(),
+        }
+    }
+
+    /// Get the security scheme type as a string.
+    ///
+    /// # Returns
+    ///
+    /// The security scheme type.
+    pub fn scheme_type(&self) -> &str {
+        match self {
+            SecurityScheme::ApiKey(_) => "apiKey",
+            SecurityScheme::Http(_) => "http",
+            SecurityScheme::OAuth2(_) => "oauth2",
+            SecurityScheme::OpenIdConnect(_) => "openIdConnect",
+        }
+    }
+
+    /// Check if the security scheme requires user interaction.
+    ///
+    /// # Returns
+    ///
+    /// `true` if user interaction is required.
+    pub fn requires_user_interaction(&self) -> bool {
+        match self {
+            SecurityScheme::ApiKey(_) => false,
+            SecurityScheme::Http(_) => false,
+            SecurityScheme::OAuth2(scheme) => {
+                // OAuth2 flows that require user interaction
+                scheme.flows.implicit.is_some() || scheme.flows.authorization_code.is_some()
+            }
+            SecurityScheme::OpenIdConnect(_) => true,
+        }
+    }
 }
 
 /// Agent extension.
@@ -679,6 +1256,435 @@ pub struct AgentExtension {
     /// Optional configuration for the extension.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub params: Option<serde_json::Value>,
+}
+
+impl AgentExtension {
+    /// Create a new agent extension with the specified URI.
+    ///
+    /// # Arguments
+    ///
+    /// * `uri` - The URI of the extension.
+    ///
+    /// # Returns
+    ///
+    /// A new `AgentExtension` with the specified URI.
+    pub fn new(uri: String) -> Self {
+        Self {
+            uri,
+            required: None,
+            description: None,
+            params: None,
+        }
+    }
+
+    /// Create a new required agent extension with description and parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `uri` - The URI of the extension.
+    /// * `description` - A description of how this agent uses this extension.
+    /// * `required` - Whether the client must follow specific requirements.
+    /// * `params` - Optional configuration for the extension.
+    ///
+    /// # Returns
+    ///
+    /// A new `AgentExtension` with the specified parameters.
+    pub fn with_config(
+        uri: String,
+        description: Option<String>,
+        required: Option<bool>,
+        params: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            uri,
+            required,
+            description,
+            params,
+        }
+    }
+
+    /// Validate the extension URI format.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the URI is valid, `Err(String)` with error message if invalid.
+    pub fn validate_uri(&self) -> Result<(), String> {
+        if self.uri.is_empty() {
+            return Err("Extension URI cannot be empty".to_string());
+        }
+
+        // Basic URI validation - should start with http:// or https://
+        if !self.uri.starts_with("http://") && !self.uri.starts_with("https://") {
+            return Err("Extension URI must be a valid HTTP or HTTPS URL".to_string());
+        }
+
+        // Check for common URI patterns
+        if self.uri.len() < 10 {
+            return Err("Extension URI appears to be too short".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Validate extension parameters against known extension types.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if parameters are valid, `Err(String)` with error message if invalid.
+    pub fn validate_params(&self) -> Result<(), String> {
+        if let Some(params) = &self.params {
+            // Validate that params is an object
+            if !params.is_object() {
+                return Err("Extension params must be a JSON object".to_string());
+            }
+
+            // Validate specific extension types based on URI patterns
+            if self.uri.contains("oauth") || self.uri.contains("auth") {
+                self.validate_auth_extension_params(params)?;
+            } else if self.uri.contains("webhook") || self.uri.contains("notification") {
+                self.validate_webhook_extension_params(params)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate authentication extension parameters.
+    fn validate_auth_extension_params(&self, params: &serde_json::Value) -> Result<(), String> {
+        let obj = params.as_object().unwrap();
+
+        // Common auth extension parameters
+        if let Some(client_id) = obj.get("clientId") {
+            if !client_id.is_string() || client_id.as_str().unwrap().is_empty() {
+                return Err("Auth extension clientId must be a non-empty string".to_string());
+            }
+        }
+
+        if let Some(scopes) = obj.get("scopes") {
+            if !scopes.is_array() {
+                return Err("Auth extension scopes must be an array".to_string());
+            }
+        }
+
+        if let Some(redirect_uri) = obj.get("redirectUri") {
+            if !redirect_uri.is_string() {
+                return Err("Auth extension redirectUri must be a string".to_string());
+            }
+            let uri_str = redirect_uri.as_str().unwrap();
+            if !uri_str.starts_with("http://") && !uri_str.starts_with("https://") {
+                return Err("Auth extension redirectUri must be a valid URL".to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate webhook extension parameters.
+    fn validate_webhook_extension_params(&self, params: &serde_json::Value) -> Result<(), String> {
+        let obj = params.as_object().unwrap();
+
+        if let Some(url) = obj.get("url") {
+            if !url.is_string() || url.as_str().unwrap().is_empty() {
+                return Err("Webhook extension url must be a non-empty string".to_string());
+            }
+            let url_str = url.as_str().unwrap();
+            if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
+                return Err("Webhook extension url must be a valid HTTP or HTTPS URL".to_string());
+            }
+        }
+
+        if let Some(secret) = obj.get("secret") {
+            if !secret.is_string() {
+                return Err("Webhook extension secret must be a string".to_string());
+            }
+        }
+
+        if let Some(events) = obj.get("events") {
+            if !events.is_array() {
+                return Err("Webhook extension events must be an array".to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Perform comprehensive validation of the extension.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the extension is valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        self.validate_uri()?;
+        self.validate_params()?;
+
+        // Validate description length if present
+        if let Some(desc) = &self.description {
+            if desc.len() > 1000 {
+                return Err("Extension description is too long (max 1000 characters)".to_string());
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// FIELD VALIDATION MODULE
+// ============================================================================
+
+/// Validation utilities for A2A protocol fields.
+pub mod validation {
+    use std::collections::HashSet;
+
+    /// Validate URL format.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL string to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the URL is valid, `Err(String)` with error message if invalid.
+    pub fn validate_url(url: &str) -> Result<(), String> {
+        if url.is_empty() {
+            return Err("URL cannot be empty".to_string());
+        }
+
+        // Basic URL validation
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err("URL must start with http:// or https://".to_string());
+        }
+
+        // Check minimum length
+        if url.len() < 10 {
+            return Err("URL appears to be too short".to_string());
+        }
+
+        // Check for valid domain structure
+        let without_protocol = if url.starts_with("https://") {
+            &url[8..]
+        } else {
+            &url[7..]
+        };
+
+        if without_protocol.is_empty() {
+            return Err("URL must contain a domain".to_string());
+        }
+
+        // Check for invalid characters
+        if url.contains(' ') {
+            return Err("URL cannot contain spaces".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Validate media type format.
+    ///
+    /// # Arguments
+    ///
+    /// * `media_type` - The media type string to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the media type is valid, `Err(String)` with error message if invalid.
+    pub fn validate_media_type(media_type: &str) -> Result<(), String> {
+        if media_type.is_empty() {
+            return Err("Media type cannot be empty".to_string());
+        }
+
+        // Basic media type validation (type/subtype)
+        let parts: Vec<&str> = media_type.split('/').collect();
+        if parts.len() != 2 {
+            return Err("Media type must be in format 'type/subtype'".to_string());
+        }
+
+        let (main_type, sub_type) = (parts[0], parts[1]);
+
+        if main_type.is_empty() || sub_type.is_empty() {
+            return Err("Media type parts cannot be empty".to_string());
+        }
+
+        // Validate common media types
+        let valid_main_types: HashSet<&str> = [
+            "text", "image", "audio", "video", "application", "multipart", "message"
+        ].iter().cloned().collect();
+
+        if !valid_main_types.contains(main_type) && !main_type.starts_with("x-") {
+            return Err(format!("Unknown media type: {}", main_type));
+        }
+
+        Ok(())
+    }
+
+    /// Validate task state transitions.
+    ///
+    /// # Arguments
+    ///
+    /// * `from_state` - The current task state.
+    /// * `to_state` - The target task state.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the transition is valid, `Err(String)` with error message if invalid.
+    pub fn validate_task_state_transition(from_state: &crate::TaskState, to_state: &crate::TaskState) -> Result<(), String> {
+        use crate::TaskState::*;
+
+        let valid_transitions = match from_state {
+            Submitted => vec![Working, Rejected, Canceled, AuthRequired],
+            Working => vec![Completed, Failed, Canceled, InputRequired],
+            InputRequired => vec![Working, Canceled, Failed],
+            AuthRequired => vec![Working, Rejected, Canceled],
+            Completed => vec![], // Terminal state
+            Failed => vec![], // Terminal state
+            Canceled => vec![], // Terminal state
+            Rejected => vec![], // Terminal state
+            Unknown => vec![Submitted, Working, Completed, Failed, Canceled, Rejected, AuthRequired, InputRequired],
+        };
+
+        if !valid_transitions.contains(to_state) {
+            return Err(format!("Invalid task state transition from {:?} to {:?}", from_state, to_state));
+        }
+
+        Ok(())
+    }
+
+    /// Validate message ID format.
+    ///
+    /// # Arguments
+    ///
+    /// * `message_id` - The message ID to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the message ID is valid, `Err(String)` with error message if invalid.
+    pub fn validate_message_id(message_id: &str) -> Result<(), String> {
+        if message_id.is_empty() {
+            return Err("Message ID cannot be empty".to_string());
+        }
+
+        if message_id.len() > 255 {
+            return Err("Message ID is too long (max 255 characters)".to_string());
+        }
+
+        // Check for valid characters (alphanumeric, hyphens, underscores)
+        if !message_id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return Err("Message ID can only contain alphanumeric characters, hyphens, and underscores".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Validate task ID format.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` - The task ID to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the task ID is valid, `Err(String)` with error message if invalid.
+    pub fn validate_task_id(task_id: &str) -> Result<(), String> {
+        if task_id.is_empty() {
+            return Err("Task ID cannot be empty".to_string());
+        }
+
+        if task_id.len() > 255 {
+            return Err("Task ID is too long (max 255 characters)".to_string());
+        }
+
+        // Check for valid characters (alphanumeric, hyphens, underscores)
+        if !task_id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return Err("Task ID can only contain alphanumeric characters, hyphens, and underscores".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Validate agent name format.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The agent name to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the name is valid, `Err(String)` with error message if invalid.
+    pub fn validate_agent_name(name: &str) -> Result<(), String> {
+        if name.is_empty() {
+            return Err("Agent name cannot be empty".to_string());
+        }
+
+        if name.len() > 100 {
+            return Err("Agent name is too long (max 100 characters)".to_string());
+        }
+
+        // Check for reasonable characters
+        if name.trim() != name {
+            return Err("Agent name cannot start or end with whitespace".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Validate version string format.
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - The version string to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the version is valid, `Err(String)` with error message if invalid.
+    pub fn validate_version(version: &str) -> Result<(), String> {
+        if version.is_empty() {
+            return Err("Version cannot be empty".to_string());
+        }
+
+        if version.len() > 50 {
+            return Err("Version is too long (max 50 characters)".to_string());
+        }
+
+        // Basic semantic version validation (flexible)
+        let parts: Vec<&str> = version.split('.').collect();
+        if parts.is_empty() || parts.len() > 4 {
+            return Err("Version should have 1-4 dot-separated parts".to_string());
+        }
+
+        for part in parts {
+            if part.is_empty() {
+                return Err("Version parts cannot be empty".to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate skill ID format.
+    ///
+    /// # Arguments
+    ///
+    /// * `skill_id` - The skill ID to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the skill ID is valid, `Err(String)` with error message if invalid.
+    pub fn validate_skill_id(skill_id: &str) -> Result<(), String> {
+        if skill_id.is_empty() {
+            return Err("Skill ID cannot be empty".to_string());
+        }
+
+        if skill_id.len() > 100 {
+            return Err("Skill ID is too long (max 100 characters)".to_string());
+        }
+
+        // Check for valid characters (alphanumeric, hyphens, underscores, dots)
+        if !skill_id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
+            return Err("Skill ID can only contain alphanumeric characters, hyphens, underscores, and dots".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 /// Agent capabilities.
@@ -922,6 +1928,82 @@ pub struct TaskArtifactUpdateEvent {
     pub metadata: Option<serde_json::Value>,
 }
 
+impl TaskArtifactUpdateEvent {
+    /// Create a new task artifact update event.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` - The task ID.
+    /// * `context_id` - The context ID.
+    /// * `artifact` - The generated artifact.
+    ///
+    /// # Returns
+    ///
+    /// A new `TaskArtifactUpdateEvent`.
+    pub fn new(task_id: String, context_id: String, artifact: Artifact) -> Self {
+        Self {
+            kind: "artifact-update".to_string(),
+            task_id,
+            context_id,
+            artifact,
+            append: None,
+            last_chunk: None,
+            metadata: None,
+        }
+    }
+
+    /// Validate the artifact update event.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.kind != "artifact-update" {
+            return Err("TaskArtifactUpdateEvent kind must be 'artifact-update'".to_string());
+        }
+
+        crate::validation::validate_task_id(&self.task_id)?;
+
+        if self.context_id.is_empty() {
+            return Err("Context ID cannot be empty".to_string());
+        }
+
+        // Validate artifact parts
+        if self.artifact.parts.is_empty() {
+            return Err("Artifact must contain at least one part".to_string());
+        }
+
+        // Validate streaming consistency
+        if let Some(append) = self.append {
+            if let Some(last_chunk) = self.last_chunk {
+                if append && last_chunk {
+                    return Err("Artifact cannot both append and be the last chunk".to_string());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if this is a streaming chunk.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is part of a streaming sequence.
+    pub fn is_streaming_chunk(&self) -> bool {
+        self.append.unwrap_or(false) || self.last_chunk.unwrap_or(false)
+    }
+
+    /// Check if this is the final chunk in a streaming sequence.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is the last chunk.
+    pub fn is_final_chunk(&self) -> bool {
+        self.last_chunk.unwrap_or(false)
+    }
+}
+
 /// Sent by server during sendStream or subscribe requests for status updates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskStatusUpdateEvent {
@@ -941,6 +2023,82 @@ pub struct TaskStatusUpdateEvent {
     /// Extension metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
+}
+
+impl TaskStatusUpdateEvent {
+    /// Create a new task status update event.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` - The task ID.
+    /// * `context_id` - The context ID.
+    /// * `status` - The current task status.
+    /// * `final_event` - Whether this is the final event.
+    ///
+    /// # Returns
+    ///
+    /// A new `TaskStatusUpdateEvent`.
+    pub fn new(task_id: String, context_id: String, status: TaskStatus, final_event: bool) -> Self {
+        Self {
+            kind: "status-update".to_string(),
+            task_id,
+            context_id,
+            status,
+            final_event,
+            metadata: None,
+        }
+    }
+
+    /// Validate the status update event.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(String)` with error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.kind != "status-update" {
+            return Err("TaskStatusUpdateEvent kind must be 'status-update'".to_string());
+        }
+
+        crate::validation::validate_task_id(&self.task_id)?;
+
+        if self.context_id.is_empty() {
+            return Err("Context ID cannot be empty".to_string());
+        }
+
+        // Validate that final events have terminal states
+        if self.final_event {
+            match self.status.state {
+                TaskState::Completed | TaskState::Failed | TaskState::Canceled | TaskState::Rejected => {
+                    // These are valid terminal states for final events
+                }
+                _ => {
+                    return Err("Final status update events must have terminal task states".to_string());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if this event indicates a terminal state.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the task has reached a terminal state.
+    pub fn is_terminal_state(&self) -> bool {
+        matches!(self.status.state, 
+            TaskState::Completed | TaskState::Failed | TaskState::Canceled | TaskState::Rejected
+        )
+    }
+
+    /// Check if this is the final event in the stream.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is the final event.
+    pub fn is_final_event(&self) -> bool {
+        self.final_event
+    }
 }
 
 /// Parameters containing only a task ID, used for simple task operations.
