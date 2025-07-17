@@ -8,6 +8,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// JSON-RPC ID type that can be string, integer, or null
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JsonRpcId {
+    String(String),
+    Integer(i64),
+    Null,
+}
+
 /// The current version of the A2A protocol implemented by this crate.
 pub const PROTOCOL_VERSION: &str = "0.2.5";
 
@@ -2111,7 +2120,18 @@ pub struct TaskIdParams {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// A2A error response.
+/// JSON-RPC error response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JSONRPCErrorResponse {
+    /// The JSON-RPC ID.
+    pub id: JsonRpcId,
+    /// The JSON-RPC version.
+    pub jsonrpc: String,
+    /// The error details.
+    pub error: A2AError,
+}
+
+/// A2A error response (used within JSONRPCErrorResponse).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct A2AErrorResponse {
@@ -2150,7 +2170,7 @@ pub struct SendMessageRequest {
     /// The parameters for the request.
     pub params: SendMessageParams,
     /// The JSON-RPC ID.
-    pub id: String,
+    pub id: JsonRpcId,
     /// The JSON-RPC version.
     pub jsonrpc: String,
 }
@@ -2198,7 +2218,7 @@ impl SendMessageRequest {
                 configuration,
                 metadata,
             },
-            id,
+            id: JsonRpcId::String(id),
             jsonrpc: "2.0".to_string(),
         }
     }
@@ -2217,30 +2237,31 @@ pub struct SendMessageParams {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// Send message response.
+/// Send message response (can be success or error).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendMessageResponse {
+#[serde(untagged)]
+pub enum SendMessageResponse {
+    Success(SendMessageSuccessResponse),
+    Error(JSONRPCErrorResponse),
+}
+
+/// Send message success response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendMessageSuccessResponse {
     /// The JSON-RPC ID.
-    pub id: String,
+    pub id: JsonRpcId,
     /// The JSON-RPC version.
     pub jsonrpc: String,
-    /// The result of the request.
+    /// The result of the request (Task or Message).
     pub result: SendMessageResult,
 }
 
-/// Send message result.
+/// Send message result (can be Task or Message).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendMessageResult {
-    /// The task ID.
-    pub task_id: String,
-    /// The message ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-    /// The conversation ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub conversation_id: Option<String>,
+#[serde(untagged)]
+pub enum SendMessageResult {
+    Task(Task),
+    Message(Message),
 }
 
 /// Send streaming message request.
@@ -2683,7 +2704,7 @@ mod tests {
         );
 
         assert_eq!(request.method, RequestMethod::MessageSend);
-        assert_eq!(request.id, "1");
+        assert_eq!(request.id, JsonRpcId::String("1".to_string()));
         assert_eq!(request.jsonrpc, "2.0");
         assert_eq!(request.params.message.kind, "message");
         assert_eq!(request.params.message.message_id, "msg-123");
@@ -3668,5 +3689,135 @@ mod tests {
         assert_eq!(task.artifacts.is_some(), deserialized.artifacts.is_some());
         assert_eq!(task.history.is_some(), deserialized.history.is_some());
         assert_eq!(task.metadata, deserialized.metadata);
+    }
+
+    // ============================================================================
+    // JSON SCHEMA COMPLIANCE TESTS
+    // ============================================================================
+
+    #[test]
+    fn test_send_message_request_with_integer_id() {
+        let json_with_int_id = r#"{
+            "id": 123,
+            "jsonrpc": "2.0",
+            "method": "message/send",
+            "params": {
+                "message": {
+                    "kind": "message",
+                    "messageId": "msg-1",
+                    "parts": [{"kind": "text", "text": "Hello"}],
+                    "role": "user"
+                }
+            }
+        }"#;
+
+        let result = serde_json::from_str::<SendMessageRequest>(json_with_int_id);
+        assert!(result.is_ok(), "Should parse SendMessageRequest with integer ID");
+
+        let request = result.unwrap();
+        assert_eq!(request.id, JsonRpcId::Integer(123));
+        assert_eq!(request.method, RequestMethod::MessageSend);
+        assert_eq!(request.params.message.message_id, "msg-1");
+    }
+
+    #[test]
+    fn test_send_message_response_error_case() {
+        let error_response_json = r#"{
+            "id": "123",
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": "Method not found"
+            }
+        }"#;
+
+        let result = serde_json::from_str::<SendMessageResponse>(error_response_json);
+        assert!(result.is_ok(), "Should parse SendMessageResponse error case");
+
+        let response = result.unwrap();
+        match response {
+            SendMessageResponse::Error(error_resp) => {
+                assert_eq!(error_resp.id, JsonRpcId::String("123".to_string()));
+                assert_eq!(error_resp.jsonrpc, "2.0");
+            }
+            _ => panic!("Expected error response"),
+        }
+    }
+
+    #[test]
+    fn test_send_message_response_with_task_result() {
+        let task_result_json = r#"{
+            "id": "123",
+            "jsonrpc": "2.0",
+            "result": {
+                "id": "task-1",
+                "kind": "task",
+                "status": {
+                    "state": "submitted"
+                },
+                "contextId": "ctx-1"
+            }
+        }"#;
+
+        let result = serde_json::from_str::<SendMessageResponse>(task_result_json);
+        assert!(result.is_ok(), "Should parse SendMessageResponse with Task result");
+
+        let response = result.unwrap();
+        match response {
+            SendMessageResponse::Success(success_resp) => {
+                assert_eq!(success_resp.id, JsonRpcId::String("123".to_string()));
+                assert_eq!(success_resp.jsonrpc, "2.0");
+                match success_resp.result {
+                    SendMessageResult::Task(task) => {
+                        assert_eq!(task.id, "task-1");
+                        assert_eq!(task.kind, "task");
+                        assert_eq!(task.context_id, "ctx-1");
+                        assert_eq!(task.status.state, TaskState::Submitted);
+                    }
+                    _ => panic!("Expected Task result"),
+                }
+            }
+            _ => panic!("Expected success response"),
+        }
+    }
+
+    #[test]
+    fn test_send_message_response_with_message_result() {
+        let message_result_json = r#"{
+            "id": "123",
+            "jsonrpc": "2.0",
+            "result": {
+                "kind": "message",
+                "messageId": "msg-2",
+                "parts": [{"kind": "text", "text": "Response"}],
+                "role": "agent"
+            }
+        }"#;
+
+        let result = serde_json::from_str::<SendMessageResponse>(message_result_json);
+        assert!(result.is_ok(), "Should parse SendMessageResponse with Message result");
+
+        let response = result.unwrap();
+        match response {
+            SendMessageResponse::Success(success_resp) => {
+                assert_eq!(success_resp.id, JsonRpcId::String("123".to_string()));
+                assert_eq!(success_resp.jsonrpc, "2.0");
+                match success_resp.result {
+                    SendMessageResult::Message(message) => {
+                        assert_eq!(message.kind, "message");
+                        assert_eq!(message.message_id, "msg-2");
+                        assert_eq!(message.role, MessageRole::Agent);
+                        assert_eq!(message.parts.len(), 1);
+                        if let Part::Text(text_part) = &message.parts[0] {
+                            assert_eq!(text_part.text, "Response");
+                        } else {
+                            panic!("Expected TextPart");
+                        }
+                    }
+                    _ => panic!("Expected Message result"),
+                }
+            }
+            _ => panic!("Expected success response"),
+        }
     }
 }
