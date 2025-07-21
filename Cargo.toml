@@ -6,6 +6,11 @@ description = "Rust implementation of the A2A (Agent-to-Agent) protocol"
 license = "MIT"
 publish = ["kellnr"]
 
+[package.metadata.protocol]
+name = "A2A"
+version = "0.2.6"
+specification_url = "https://a2a-protocol.org/v0.2.6/"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
