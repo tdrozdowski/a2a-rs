@@ -2149,7 +2149,7 @@ pub struct A2AErrorResponse {
 pub struct MessageSendConfiguration {
     /// Accepted output modalities by the client
     #[serde(rename = "acceptedOutputModes")]
-    pub accepted_output_modes: Vec<String>,
+    pub accepted_output_modes: Option<Vec<String>>,
     /// If the server should treat the client as a blocking request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blocking: Option<bool>,
@@ -2955,7 +2955,7 @@ mod tests {
         let send_params = SendMessageParams {
             message: message.clone(),
             configuration: Some(MessageSendConfiguration {
-                accepted_output_modes: vec!["text/plain".to_string()],
+                accepted_output_modes: Some(vec!["text/plain".to_string()]),
                 blocking: Some(true),
                 history_length: Some(10),
                 push_notification_config: Some(PushNotificationConfig {

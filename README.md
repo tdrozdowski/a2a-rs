@@ -4,9 +4,13 @@ A Rust implementation of the A2A (Agent-to-Agent) protocol, which enables commun
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Important: Understanding A2A Key Concepts
+
+**Before using this crate, please read the [A2A Protocol Key Concepts](https://a2a-protocol.org/latest/topics/key-concepts/).** This documentation contains critical information about the A2A protocol that you need to understand to effectively use this library.
+
 ## About
 
-a2a-rs is a comprehensive Rust implementation of the A2A (Agent-to-Agent) protocol version 0.2.5. The A2A protocol is designed to enable standardized communication between AI agents, allowing them to exchange messages, manage tasks, and coordinate activities.
+a2a-rs is a comprehensive Rust implementation of the A2A (Agent-to-Agent) protocol version 0.2.6. The A2A protocol is designed to enable standardized communication between AI agents, allowing them to exchange messages, manage tasks, and coordinate activities.
 
 This library provides:
 - Complete type definitions for all A2A protocol components
@@ -71,7 +75,7 @@ The library includes comprehensive validation for:
 
 ## Features
 
-- **Complete Protocol Implementation**: Implements all aspects of the A2A protocol version 0.2.5
+- **Complete Protocol Implementation**: Implements all aspects of the A2A protocol version 0.2.6
 - **Type Safety**: Uses Rust's strong type system to ensure protocol correctness
 - **Serialization/Deserialization**: Full support for JSON serialization and deserialization
 - **Comprehensive Validation**: Built-in validation for URLs, media types, task IDs, agent names, and more
@@ -88,17 +92,9 @@ The library includes comprehensive validation for:
 
 For detailed API documentation, please refer to the documentation comments in the source code.
 
-## A2A Protocol
+## Protocol Specification
 
-The A2A (Agent-to-Agent) protocol is a standardized way for AI agents to communicate with each other. It defines:
-
-- Agent capabilities and skills
-- Message formats for requests and responses
-- Task management (creation, status checking, cancellation)
-- Security schemes for authentication
-- Push notification configurations
-
-For more information about the A2A protocol, refer to the specification in the `src/a2a.json` file.
+For implementation details, refer to the specification in the `src/a2a.json` file.
 
 ## License
 
